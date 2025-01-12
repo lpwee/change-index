@@ -134,6 +134,16 @@ def enter_swap_screen(driver):
     return True
 
 def select_new_index(driver, desired_index):
+    """
+    Select a new index number from the dropdown and submit the form
+    
+    Args:
+        driver: Selenium WebDriver instance
+        desired_index (str): The desired index number to change to
+    
+    Returns:
+        bool: True if successful, None if failed
+    """
 
     # First find the select element
     try:
@@ -193,8 +203,36 @@ if __name__ == "__main__":
         if enter_swap_screen(driver):
             select_new_index(driver, desired_index)
 
-        time.sleep(5)
+        time.sleep(2)
         
-
-
-        pass
+        # Handle confirmation process
+        try:
+            while True:
+                # Look for confirmation button
+                try:
+                    confirm_button = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='submit'][value='Confirm to Change Index Number']"))
+                    )
+                    print("Found confirmation button, clicking...")
+                    confirm_button.click()
+                    
+                    # Wait for and handle any alert
+                    try:
+                        alert = WebDriverWait(driver, 5).until(EC.alert_is_present())
+                        alert_text = alert.text
+                        print(f"Alert found: {alert_text}")
+                        alert.accept()
+                        print("Alert dismissed")
+                        time.sleep(1)  # Short wait after dismissing alert
+                    except TimeoutException:
+                        print("No alert found after clicking confirm")
+                        break
+                    
+                except TimeoutException:
+                    print("Confirmation button no longer found, process complete")
+                    break
+                    
+        except Exception as e:
+            print(f"An error occurred during confirmation process: {str(e)}")
+            
+        print("Index change process completed")
