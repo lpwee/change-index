@@ -1,29 +1,29 @@
-# NTU STARS Planner Login Script
+# NTU STARS Index Change Script
 
-This script automates the login process for NTU STARS Planner using Selenium WebDriver.
+This script automates the index change process for NTU STARS using Selenium WebDriver.
 
 ## Setup
 
 1. Set up the conda environment:
 ```bash
-conda create -n change-index python=3.10 selenium python-dotenv
+conda create
 conda activate change-index
 ```
+Ensure environment is activated, check for `(change-index)` in terminal.
 
-2. Install Chrome WebDriver:
-   - Download ChromeDriver from https://sites.google.com/chromium.org/driver/
-   - Make sure the ChromeDriver version matches your Chrome browser version
-   - Add ChromeDriver to your system PATH
-
-3. Create a `.env` file:
+2. Create a `.env` file:
    - Copy `.env.example` to `.env`
-   - Fill in your NTU username and password
+   - Fill in your :
+      - NTU username
+      - password
+      - old index no.
+      - desired index no.
 
 ## Usage
 
 Run the script:
 ```bash
-python ntu_login.py
+python change_index.py
 ```
 
 The script will:
@@ -31,10 +31,6 @@ The script will:
 2. Navigate to the NTU STARS Planner login page
 3. Automatically fill in your credentials
 4. Submit the login form
-5. Close the browser after a successful login
+5. Upon successful login, request to swap to desired index
+6. Continuously try until index has been swapped.
 
-## Security Note
-
-- Never commit your `.env` file containing your credentials
-- Keep your credentials secure and don't share them
-- The script uses environment variables to keep credentials out of the code

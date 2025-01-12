@@ -11,6 +11,10 @@ def setup_driver():
     """Setup and return the Chrome WebDriver with appropriate options"""
     options = webdriver.ChromeOptions()
     options.add_argument('--disable-extensions')
+    options.add_argument('--headless=new')  # Run in headless mode
+    options.add_argument('--disable-gpu')  # Required for some systems
+    options.add_argument('--no-sandbox')  # Required for some systems
+    options.add_argument('--disable-dev-shm-usage')  # Required for some systems
     return webdriver.Chrome(options=options)
 
 def login_to_stars(driver, username, password):
