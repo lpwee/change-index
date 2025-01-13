@@ -6,7 +6,7 @@ This script automates the index change process for NTU STARS using Selenium WebD
 
 1. Set up the conda environment:
 ```bash
-conda create
+conda env create -f environment.yml
 conda activate change-index
 ```
 Ensure environment is activated, check for `(change-index)` in terminal.
