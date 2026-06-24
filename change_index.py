@@ -7,14 +7,18 @@ import time
 import os
 from dotenv import load_dotenv
 
+REQUEST_BUTTON_XPATH = "//*[@id='top']/div/section[2]/div/div/p/table/tbody/tr[1]/td[2]/table/tbody/tr[12]/td/form/input[1]"
+ADD_BUTTON_XPATH = "//*[@id='top']/div/section[2]/div/div/input[1]"
+RETRY_BUTTON_XPATH = "//*[@id='xyz']/input[1]"
+
 def setup_driver():
     """Setup and return the Chrome WebDriver with appropriate options"""
     options = webdriver.ChromeOptions()
     options.add_argument('--disable-extensions')
-    options.add_argument('--headless=new')  # Run in headless mode
-    options.add_argument('--disable-gpu')  # Required for some systems
-    options.add_argument('--no-sandbox')  # Required for some systems
-    options.add_argument('--disable-dev-shm-usage')  # Required for some systems
+    # options.add_argument('--headless=new')  # Run in headless mode
+    # options.add_argument('--disable-gpu')  # Required for some systems
+    # options.add_argument('--no-sandbox')  # Required for some systems
+    # options.add_argument('--disable-dev-shm-usage')  # Required for some systems
     return webdriver.Chrome(options=options)
 
 def login_to_stars(driver, username, password):
@@ -178,6 +182,59 @@ def select_new_index(driver, desired_index):
         return None
 
 
+def click_xpath(driver, xpath, description, timeout=10):
+    """Wait for an XPath-targeted button, then click it."""
+    try:
+        button = WebDriverWait(driver, timeout).until(
+            EC.element_to_be_clickable((By.XPATH, xpath))
+        )
+        button.click()
+        print(f"Clicked {description}")
+        return True
+    except TimeoutException:
+        print(f"{description} was not found or was not clickable")
+        return False
+    except Exception as e:
+        print(f"An error occurred while clicking {description}: {str(e)}")
+        return False
+
+
+def request_index_until_added(driver):
+    """Submit the request and retry from the planner whenever it is not added."""
+    attempt = 1
+
+    while True:
+        print(f"Starting request attempt {attempt}")
+        if not click_xpath(driver, REQUEST_BUTTON_XPATH, "request button"):
+            return False
+
+        if not click_xpath(driver, ADD_BUTTON_XPATH, "add button"):
+            return False
+
+        try:
+            WebDriverWait(driver, 10).until(
+                lambda current_driver: "Not Added." in current_driver.page_source
+            )
+        except TimeoutException:
+            print("'Not Added.' did not appear; request flow finished.")
+            return True
+
+        print("Request was not added. Returning to the planner to try again.")
+        if not click_xpath(driver, RETRY_BUTTON_XPATH, "retry button"):
+            return False
+
+        # The retry button returns to the logged-in planner page.
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, REQUEST_BUTTON_XPATH))
+            )
+        except TimeoutException:
+            print("Planner page did not load after retrying")
+            return False
+
+        attempt += 1
+
+
 if __name__ == "__main__":
     # Load environment variables
     load_dotenv()
@@ -185,58 +242,16 @@ if __name__ == "__main__":
     # Get credentials and index number from environment variables
     username = os.getenv("NTU_USERNAME")
     password = os.getenv("NTU_PASSWORD")
-    old_index = os.getenv("OLD_INDEX")
-    desired_index = os.getenv("DESIRED_INDEX")
     
     if not username or not password:
         print("Please set NTU_USERNAME and NTU_PASSWORD environment variables")
-    elif not old_index:
-        print("Please set OLD_INDEX environment variables")
+    else:
+        # Initialize the driver only when the required credentials are available.
+        driver = setup_driver()
+        print("Browser launched successfully")
 
-
-    # Initialize the driver
-    driver = setup_driver()
-    print("Browser launched successfully")
-
-    # Initial login
-    if login_to_stars(driver, username, password):
-        # If login successful and index number provided, try to find it
-        radio_button = find_index_radio(driver, old_index)
-        if radio_button:
-            radio_button.click()
-        if enter_swap_screen(driver):
-            select_new_index(driver, desired_index)
-
-        time.sleep(2)
-        
-        # Handle confirmation process
-        try:
-            while True:
-                # Look for confirmation button
-                try:
-                    confirm_button = WebDriverWait(driver, 10).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='submit'][value='Confirm to Change Index Number']"))
-                    )
-                    print("Found confirmation button, clicking...")
-                    confirm_button.click()
-                    
-                    # Wait for and handle any alert
-                    try:
-                        alert = WebDriverWait(driver, 5).until(EC.alert_is_present())
-                        alert_text = alert.text
-                        print(f"Alert found: {alert_text}")
-                        alert.accept()
-                        print("Alert dismissed")
-                        time.sleep(1)  # Short wait after dismissing alert
-                    except TimeoutException:
-                        print("No alert found after clicking confirm")
-                        break
-                    
-                except TimeoutException:
-                    print("Confirmation button no longer found, process complete")
-                    break
-                    
-        except Exception as e:
-            print(f"An error occurred during confirmation process: {str(e)}")
-            
-        print("Index change process completed")
+        if login_to_stars(driver, username, password):
+            if request_index_until_added(driver):
+                print("Index request process completed")
+            else:
+                print("Index request process stopped before completion")
