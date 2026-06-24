@@ -1,15 +1,16 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
-import time
+from selenium.common.exceptions import TimeoutException, WebDriverException
 import os
 from dotenv import load_dotenv
 
-REQUEST_BUTTON_XPATH = "//*[@id='top']/div/section[2]/div/div/p/table/tbody/tr[1]/td[2]/table/tbody/tr[12]/td/form/input[1]"
-ADD_BUTTON_XPATH = "//*[@id='top']/div/section[2]/div/div/input[1]"
-RETRY_BUTTON_XPATH = "//*[@id='xyz']/input[1]"
+REQUEST_BUTTON_LABEL = "Add (Register) Selected Course(s)"
+ADD_BUTTON_LABEL = "Confirm to add course(s)"
+RETRY_BUTTON_LABEL = "Back to Timetable"
+DEFAULT_WAIT_SECONDS = 10
+MAX_REQUEST_ATTEMPTS = 100
 
 def setup_driver():
     """Setup and return the Chrome WebDriver with appropriate options"""
@@ -75,118 +76,20 @@ def login_to_stars(driver, username, password):
         print(f"An error occurred during login: {str(e)}")
         return False
 
-def find_index_radio(driver, index):
-    """
-    Find radio button for specific index number
-    
-    Args:
-        driver: Selenium WebDriver instance
-        index (str): The index number to find (e.g., "82877")
-    
-    Returns:
-        WebElement: The radio button element if found, None otherwise
-    """
-    try:
-        # Using CSS_SELECTOR to find input[type='radio'] with specific name and value
-        radio_selector = f"input[type='radio'][name='index_nmbr'][value='{index}']"
-        radio_button = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, radio_selector))
-        )
-        print(f"Found radio button for index number {index}")
-        return radio_button
-        
-    except TimeoutException:
-        print(f"Radio button with index {index} not found, has index already been swapped?")
-        return None
-    except Exception as e:
-        print(f"An error occurred while finding index: {str(e)}")
-        return None
+def button_locator(label):
+    """Match common button/input patterns by their visible label."""
+    xpath = (
+        "//input[(@type='submit' or @type='button') and @value=\"%s\"]"
+        "|//button[normalize-space()=\"%s\"]"
+        "|//a[normalize-space()=\"%s\"]"
+    ) % (label, label, label)
+    return By.XPATH, xpath
 
-def enter_swap_screen(driver):
-    try:
-        # First find the select element
-        select_selector = "select[name='opt']"
-        select_element = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, select_selector))
-        )
-        
-        # Create Select object and select by value
-        select = Select(select_element)
-        select.select_by_value("C")
-        print("Selected 'Change Index' option")
-    except TimeoutException:
-        print(f"'Change Index' option not found.")
-        return None
-    except Exception as e:
-        print(f"An error occured while finding 'Change Index': {str(e)}")
-        return None
-
-    try: 
-        # Find Go button
-        go_selector = "input[type='submit'][value='Go']"
-        go_button = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, go_selector))
-        )
-        print("'Go' button found")
-        go_button.click()
-        print("'Go' button clicked")
-
-        time.sleep(10)
-
-    except TimeoutException:
-        print("'Go' button not found")
-        return None
-    except Exception as e:
-        print(f"An error occurred while finding 'Go' button: {str(e)}")
-        return None
-    return True
-
-def select_new_index(driver, desired_index):
-    """
-    Select a new index number from the dropdown and submit the form
-    
-    Args:
-        driver: Selenium WebDriver instance
-        desired_index (str): The desired index number to change to
-    
-    Returns:
-        bool: True if successful, None if failed
-    """
-
-    # First find the select element
-    try:
-        select_selector = "select[name='new_index_nmbr']"
-        select_element = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, select_selector))
-        )
-        
-        # Create Select object and select by value
-        select = Select(select_element)
-        select.select_by_value(f"{desired_index}")
-        print(f"Selected index no. {desired_index} option")
-
-        # Find and click the submit button
-        submit_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "input[type='submit'][value='OK']"))
-        )
-        submit_button.click()
-        print("Form submitted successfully")
-        
-        return True
-
-    except TimeoutException:
-        print(f"Either index no. {desired_index} or submit button not found.")
-        return None
-    except Exception as e:
-        print(f"An error occurred while processing the form: {str(e)}")
-        return None
-
-
-def click_xpath(driver, xpath, description, timeout=10):
-    """Wait for an XPath-targeted button, then click it."""
+def click_button_by_label(driver, label, description, timeout=DEFAULT_WAIT_SECONDS):
+    """Wait for a labeled button-like element, then click it."""
     try:
         button = WebDriverWait(driver, timeout).until(
-            EC.element_to_be_clickable((By.XPATH, xpath))
+            EC.element_to_be_clickable(button_locator(label))
         )
         button.click()
         print(f"Clicked {description}")
@@ -198,48 +101,98 @@ def click_xpath(driver, xpath, description, timeout=10):
         print(f"An error occurred while clicking {description}: {str(e)}")
         return False
 
+def on_request_page(driver):
+    """Return True when the first request button is currently available."""
+    try:
+        locator_type, locator_value = button_locator(REQUEST_BUTTON_LABEL)
+        buttons = driver.find_elements(locator_type, locator_value)
+        return any(button.is_displayed() and button.is_enabled() for button in buttons)
+    except WebDriverException as e:
+        print(f"Could not verify request page state: {str(e)}")
+        return False
 
-def request_index_until_added(driver):
-    """Submit the request and retry from the planner whenever it is not added."""
+def wait_for_request_result(driver, timeout=DEFAULT_WAIT_SECONDS):
+    """Wait for either a retryable rejection or a successful completion page."""
+    try:
+        WebDriverWait(driver, timeout).until(
+            lambda current_driver: "Not Added." in current_driver.page_source
+            or "Successfully" in current_driver.page_source
+            or on_request_page(current_driver)
+        )
+    except TimeoutException:
+        print("Timed out while waiting for the request result page")
+        return None
+    except WebDriverException as e:
+        print(f"Browser error while waiting for request result: {str(e)}")
+        return None
+
+    try:
+        return "Not Added." in driver.page_source
+    except WebDriverException as e:
+        print(f"Could not read the result page: {str(e)}")
+        return None
+
+def request_index_until_added(driver, max_attempts=MAX_REQUEST_ATTEMPTS):
+    """Continuously click the configured labeled buttons until the request finishes."""
     attempt = 1
 
-    while True:
+    while attempt <= max_attempts:
         print(f"Starting request attempt {attempt}")
-        if not click_xpath(driver, REQUEST_BUTTON_XPATH, "request button"):
+        if not on_request_page(driver):
+            print("Request button is not available on the current page")
             return False
 
-        if not click_xpath(driver, ADD_BUTTON_XPATH, "add button"):
+        if not click_button_by_label(
+            driver,
+            REQUEST_BUTTON_LABEL,
+            f"'{REQUEST_BUTTON_LABEL}' button",
+        ):
             return False
 
-        try:
-            WebDriverWait(driver, 10).until(
-                lambda current_driver: "Not Added." in current_driver.page_source
-            )
-        except TimeoutException:
-            print("'Not Added.' did not appear; request flow finished.")
+        if not click_button_by_label(
+            driver,
+            ADD_BUTTON_LABEL,
+            f"'{ADD_BUTTON_LABEL}' button",
+        ):
+            return False
+
+        was_not_added = wait_for_request_result(driver)
+        if was_not_added is None:
+            print("Request result could not be determined")
+            return False
+
+        if not was_not_added:
+            print("Request flow finished without a 'Not Added.' message.")
             return True
 
         print("Request was not added. Returning to the planner to try again.")
-        if not click_xpath(driver, RETRY_BUTTON_XPATH, "retry button"):
-            return False
-
-        # The retry button returns to the logged-in planner page.
-        try:
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, REQUEST_BUTTON_XPATH))
-            )
-        except TimeoutException:
-            print("Planner page did not load after retrying")
-            return False
+        if click_button_by_label(
+            driver,
+            RETRY_BUTTON_LABEL,
+            f"'{RETRY_BUTTON_LABEL}' button",
+        ):
+            try:
+                WebDriverWait(driver, DEFAULT_WAIT_SECONDS).until(
+                    lambda current_driver: on_request_page(current_driver)
+                )
+                print("Returned to planner page")
+            except TimeoutException:
+                print("Retry button clicked, but the planner page did not load in time")
+                return False
+        else:
+            print("Retry button was unavailable; trying to rebuild the request flow from the current page")
 
         attempt += 1
+
+    print(f"Reached the retry limit of {max_attempts} attempts")
+    return False
 
 
 if __name__ == "__main__":
     # Load environment variables
     load_dotenv()
     
-    # Get credentials and index number from environment variables
+    # Get credentials from environment variables
     username = os.getenv("NTU_USERNAME")
     password = os.getenv("NTU_PASSWORD")
     

@@ -16,8 +16,6 @@ Ensure environment is activated, check for `(change-index)` in terminal.
    - Fill in your :
       - NTU username
       - password
-      - old index no.
-      - desired index no.
 
 ## Usage
 
@@ -31,6 +29,5 @@ The script will:
 2. Navigate to the NTU STARS Planner login page
 3. Automatically fill in your credentials
 4. Submit the login form
-5. Upon successful login, request to swap to desired index
-6. Continuously try until index has been swapped.
-
+5. Click `Add (Register) Selected Course(s)` and then `Confirm to add course(s)`
+6. If `Not Added.` appears, click `Back to Timetable` and retry until success or the retry limit is reached.
